@@ -90,12 +90,14 @@ object YTPlayerUtils {
 
     /**
      * Client used for fast, low-latency stream resolution.
-     * ANDROID_VR clients don't require PoToken and start instantly.
-     * Note: ANDROID_VR has loginSupported=false, so metadata like audioConfig and
-     * playbackTracking must be supplemented from an authenticated client (WEB_REMIX)
-     * when the user is logged in.
+     *
+     * NOTE (2026-08): YouTube has been aggressively bot-flagging ANDROID_VR with
+     * LOGIN_REQUIRED, so it now fails on nearly every request. Using it as MAIN_CLIENT
+     * costs a wasted round-trip before falling through to STREAM_FALLBACK_CLIENTS below.
+     * IOS has been reliable in the meantime and, like ANDROID_VR, doesn't require a
+     * PoToken. Revert to an ANDROID_VR_* client if/when YouTube stops flagging it.
      */
-    private val MAIN_CLIENT: YouTubeClient = ANDROID_VR_1_43_32
+    private val MAIN_CLIENT: YouTubeClient = IOS
 
     /**
      * Client used to fetch metadata (audioConfig, playbackTracking) when the user is
@@ -103,18 +105,34 @@ object YTPlayerUtils {
      */
     private val METADATA_CLIENT: YouTubeClient = WEB_REMIX
 
+    /**
+     * Ordered by observed reliability (2026-08), not by capability — re-check this if
+     * streaming problems resurface, since YouTube periodically blocks/deprecates client
+     * fingerprints. Reorder based on which clients are actually returning "Player response OK"
+     * in the logs rather than assuming this stays accurate.
+     *
+     * Currently healthy: WEB_REMIX, WEB_CREATOR.
+     * Currently dead/deprecated by YouTube: ANDROID_VR* (LOGIN_REQUIRED bot flag),
+     * TVHTML5 / TVHTML5_SIMPLY_EMBEDDED_PLAYER ("no longer supported" / "page needs reload"),
+     * WEB (UNPLAYABLE: Video unavailable).
+     *
+     * Dead clients are kept (not deleted) near the end since YouTube's blocks aren't
+     * necessarily permanent, and TVHTML5_SIMPLY_EMBEDDED_PLAYER is the one client that
+     * can bypass age-restriction without login. Private-track and age-restricted handling
+     * below look these up by client identity (indexOf), not array position, specifically
+     * so this list can be reordered safely without silently breaking that logic.
+     */
     private val STREAM_FALLBACK_CLIENTS: Array<YouTubeClient> = arrayOf(
-        ANDROID_VR_1_61_48,
         WEB_REMIX,
-        TVHTML5_SIMPLY_EMBEDDED_PLAYER,  // Try embedded player first for age-restricted content
-        TVHTML5,
+        WEB_CREATOR,
         ANDROID_CREATOR,
         IPADOS,
-        ANDROID_VR_NO_AUTH,
         MOBILE,
-        IOS,
         WEB,
-        WEB_CREATOR
+        ANDROID_VR_1_61_48,
+        ANDROID_VR_NO_AUTH,
+        TVHTML5_SIMPLY_EMBEDDED_PLAYER,  // Bypasses age-restriction without login when it works
+        TVHTML5
     )
     data class PlaybackData(
         val audioConfig: PlayerResponse.PlayerConfig.AudioConfig?,
@@ -494,12 +512,16 @@ object YTPlayerUtils {
         // Check if this is a privately owned track (uploaded song)
         val isPrivateTrack = mainPlayerResponse.videoDetails?.musicVideoType == "MUSIC_VIDEO_TYPE_PRIVATELY_OWNED_TRACK"
 
-        // For private tracks: use TVHTML5 (index 1) with PoToken + n-transform
-        // For age-restricted: skip main client, start with fallbacks
+        // For private tracks: use TVHTML5 with PoToken + n-transform
+        // For age-restricted: skip main client, start with the embedded-player bypass
         // For normal content: standard order
+        //
+        // NOTE: looked up by client identity (indexOf), not a hardcoded position, so
+        // reordering STREAM_FALLBACK_CLIENTS above can't silently route private/age-
+        // restricted content to the wrong client.
         val startIndex = when {
-            isPrivateTrack -> 1  // TVHTML5
-            isAgeRestricted -> 0
+            isPrivateTrack -> STREAM_FALLBACK_CLIENTS.indexOf(TVHTML5).takeIf { it >= 0 } ?: -1
+            isAgeRestricted -> STREAM_FALLBACK_CLIENTS.indexOf(TVHTML5_SIMPLY_EMBEDDED_PLAYER).takeIf { it >= 0 } ?: -1
             else -> -1
         }
 
