@@ -156,6 +156,14 @@ object YTPlayerUtils {
         audioQuality: AudioQuality,
         connectivityManager: ConnectivityManager,
         context: android.content.Context? = null,
+        /**
+         * When true, skip MAIN_CLIENT and start directly at a login-capable fallback
+         * client (WEB_CREATOR). Used when a track has already failed with an expired-URL
+         * (403) error on MAIN_CLIENT — for a logged-in user this usually means the
+         * content needs an authenticated client rather than a fresh signed URL from the
+         * same client, so retrying MAIN_CLIENT again would just fail identically.
+         */
+        forceLoginCapableClient: Boolean = false,
     ): Result<PlaybackData> {
         // ── JioSaavn intercept ───────────────────────────────────────────────
         // If the user has enabled JioSaavn streaming, try to resolve the stream
@@ -512,6 +520,9 @@ object YTPlayerUtils {
         // Check if this is a privately owned track (uploaded song)
         val isPrivateTrack = mainPlayerResponse.videoDetails?.musicVideoType == "MUSIC_VIDEO_TYPE_PRIVATELY_OWNED_TRACK"
 
+        // For a track already known to fail on MAIN_CLIENT with an expired-URL error:
+        //   skip straight to a login-capable client (WEB_CREATOR) instead of retrying
+        //   MAIN_CLIENT, which would just fail identically for an unauthenticated client.
         // For private tracks: use TVHTML5 with PoToken + n-transform
         // For age-restricted: skip main client, start with the embedded-player bypass
         // For normal content: standard order
@@ -520,6 +531,7 @@ object YTPlayerUtils {
         // reordering STREAM_FALLBACK_CLIENTS above can't silently route private/age-
         // restricted content to the wrong client.
         val startIndex = when {
+            forceLoginCapableClient -> STREAM_FALLBACK_CLIENTS.indexOf(WEB_CREATOR).takeIf { it >= 0 } ?: -1
             isPrivateTrack -> STREAM_FALLBACK_CLIENTS.indexOf(TVHTML5).takeIf { it >= 0 } ?: -1
             isAgeRestricted -> STREAM_FALLBACK_CLIENTS.indexOf(TVHTML5_SIMPLY_EMBEDDED_PLAYER).takeIf { it >= 0 } ?: -1
             else -> -1
