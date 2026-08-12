@@ -2695,7 +2695,6 @@ class MusicService :
             return
         }
 
-        val retriesBeforeThisFailure = currentMediaIdRetryCount[mediaId] ?: 0
         incrementRetryCount(mediaId)
 
         // Clear the cached URL
@@ -2713,15 +2712,17 @@ class MusicService :
         retryJob = scope.launch {
             delay(RETRY_DELAY_MS)
 
-            // If this track already failed once with an expired-URL (403) error on the
-            // default client, retrying that same client again usually just fails
-            // identically — e.g. age-restricted content that needs an authenticated
-            // client rather than a freshly-signed URL from the same unauthenticated one.
-            // For a logged-in user, escalate straight to a login-capable client (WEB_CREATOR)
-            // instead of burning through the rest of the retry budget on a doomed client.
-            val shouldEscalateToLoginClient = retriesBeforeThisFailure >= 1 && YouTube.cookie != null
+            // On an expired-URL (403) error, retrying the same default client again
+            // usually just fails identically — e.g. age-restricted content that needs
+            // an authenticated client rather than a freshly-signed URL from the same
+            // unauthenticated one. For a logged-in user, escalate straight to a
+            // login-capable client (WEB_CREATOR) on the very first failure instead of
+            // burning through the retry budget on a doomed client first. This only
+            // fires on an actual failure (not on every track), so it doesn't add
+            // request volume to tracks that already play fine.
+            val shouldEscalateToLoginClient = YouTube.cookie != null
             if (shouldEscalateToLoginClient) {
-                Timber.tag(TAG).d("Repeated 403 for $mediaId, escalating to login-capable client")
+                Timber.tag(TAG).d("403 for $mediaId, escalating to login-capable client")
                 val escalated = runCatching {
                     YTPlayerUtils.playerResponseForPlayback(
                         mediaId,
