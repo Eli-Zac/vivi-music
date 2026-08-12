@@ -2738,7 +2738,17 @@ class MusicService :
                         escalated.streamUrl to System.currentTimeMillis() + (escalated.streamExpiresInSeconds * 1000L)
                     Timber.tag(TAG).d("Escalated resolution succeeded for $mediaId via login-capable client")
                 } else {
-                    Timber.tag(TAG).w("Escalated resolution failed for $mediaId, falling back to default retry")
+                    // The escalated attempt already ran the full validated fallback chain
+                    // (every client except the unvalidated default) and found nothing
+                    // playable. Retrying via seekTo/prepare here would just re-resolve
+                    // through the unvalidated default client again, which can hand back
+                    // an unvalidated URL that plays briefly and then dies the same way —
+                    // wasting a full retry cycle re-discovering what we already know.
+                    // Treat this as exhausted immediately instead of looping.
+                    Timber.tag(TAG).w("Escalated resolution exhausted all clients for $mediaId, giving up")
+                    markSongAsFailed(mediaId)
+                    handleFinalFailure()
+                    return@launch
                 }
             }
 
