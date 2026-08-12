@@ -668,11 +668,15 @@ object YTPlayerUtils {
                 // Check if this is a privately owned track (uploaded song)
                 val isPrivatelyOwned = streamPlayerResponse.videoDetails?.musicVideoType == "MUSIC_VIDEO_TYPE_PRIVATELY_OWNED_TRACK"
 
-                if (clientIndex == -1 || clientIndex == STREAM_FALLBACK_CLIENTS.size - 1 || isPrivatelyOwned) {
-                    /** skip [validateStatus] for main client, last client or private tracks */
-                    if (clientIndex == -1) {
-                        Timber.tag(logTag).d("Skipping validation for main client: ${currentClient.clientName}")
-                    } else if (isPrivatelyOwned) {
+                if (clientIndex == STREAM_FALLBACK_CLIENTS.size - 1 || isPrivatelyOwned) {
+                    /**
+                     * skip [validateStatus] for the last fallback client (nothing left to fall
+                     * back to) or private tracks. MAIN_CLIENT is deliberately NOT exempted here:
+                     * an unvalidated bad URL from MAIN_CLIENT gets handed straight to the player,
+                     * which then fails mid-playback instead of failing fast during resolution —
+                     * see the 403-escalation path in MusicService for why that's costly.
+                     */
+                    if (isPrivatelyOwned) {
                         Timber.tag(logTag).d("Skipping validation for privately owned track: ${currentClient.clientName}")
                     } else {
                         Timber.tag(logTag).d("Using last fallback client without validation: ${STREAM_FALLBACK_CLIENTS[clientIndex].clientName}")
