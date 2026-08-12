@@ -13,7 +13,6 @@ import com.music.innertube.YouTube
 import com.music.innertube.models.YouTubeClient
 import com.music.innertube.models.YouTubeClient.Companion.ANDROID_CREATOR
 import com.music.vivi.utils.BotDetectionMitigator
-import com.music.innertube.models.YouTubeClient.Companion.ANDROID_VR_1_43_32
 import com.music.innertube.models.YouTubeClient.Companion.ANDROID_VR_1_61_48
 import com.music.innertube.models.YouTubeClient.Companion.ANDROID_VR_NO_AUTH
 import com.music.innertube.models.YouTubeClient.Companion.IOS
