@@ -604,7 +604,9 @@ object YTPlayerUtils {
                     )
 
                 if (format == null) {
-                    Timber.tag(logTag).d("No suitable format found for client: ${if (clientIndex == -1) MAIN_CLIENT.clientName else STREAM_FALLBACK_CLIENTS[clientIndex].clientName}")
+                    val skippedClientName = if (clientIndex == -1) MAIN_CLIENT.clientName else STREAM_FALLBACK_CLIENTS[clientIndex].clientName
+                    Timber.tag(logTag).d("No suitable format found for client: $skippedClientName")
+                    PlaybackLogManager.log(PlaybackLogLevel.WARNING, "No suitable format: $skippedClientName", "Response OK but no matching audio format")
                     continue
                 }
 
@@ -612,7 +614,9 @@ object YTPlayerUtils {
 
                 streamUrl = findUrlOrNull(format, videoId, responseToUse, skipNewPipe = wasOriginallyAgeRestricted)
                 if (streamUrl == null) {
+                    val skippedClientName = if (clientIndex == -1) MAIN_CLIENT.clientName else STREAM_FALLBACK_CLIENTS[clientIndex].clientName
                     Timber.tag(logTag).d("Stream URL not found for format")
+                    PlaybackLogManager.log(PlaybackLogLevel.WARNING, "No stream URL: $skippedClientName", "Format found but URL/cipher resolution failed")
                     continue
                 }
 
@@ -651,6 +655,7 @@ object YTPlayerUtils {
                 streamExpiresInSeconds = streamPlayerResponse.streamingData?.expiresInSeconds
                 if (streamExpiresInSeconds == null) {
                     Timber.tag(logTag).d("Stream expiration time not found")
+                    PlaybackLogManager.log(PlaybackLogLevel.WARNING, "No expiry time: ${currentClient.clientName}", "Format and URL found but expiresInSeconds missing")
                     continue
                 }
 
@@ -676,7 +681,7 @@ object YTPlayerUtils {
                     break
                 }
 
-                if (validateStatus(streamUrl!!)) {
+                if (validateStatus(streamUrl!!, currentClient.userAgent)) {
                     // working stream found
                     Timber.tag(logTag).d("Stream validated successfully with client: ${currentClient.clientName}")
                     PlaybackLogManager.log(PlaybackLogLevel.INFO, "Stream validated", currentClient.clientName)
@@ -687,15 +692,14 @@ object YTPlayerUtils {
                     Timber.tag(logTag).d("Stream validation failed for client: ${currentClient.clientName}")
 
                     // For web clients: try alternate n-transform and re-validate (Zemer approach)
+                    var nTransformWorked = false
                     if (currentClient.useWebPoTokens) {
-                        var nTransformWorked = false
-
                         // Try YouTubeExtractor n-transform
                         try {
                             val nTransformed = com.music.innertube.YouTubeExtractor.deobfuscateUrlNParam(streamUrl!!)
                             if (nTransformed != streamUrl) {
                                 Timber.tag(logTag).d("YouTubeExtractor n-transform applied, re-validating...")
-                                if (validateStatus(nTransformed)) {
+                                if (validateStatus(nTransformed, currentClient.userAgent)) {
                                     Timber.tag(logTag).d("N-transformed URL VALIDATED OK!")
                                     streamUrl = nTransformed
                                     nTransformWorked = true
@@ -708,6 +712,7 @@ object YTPlayerUtils {
 
                         if (nTransformWorked) break
                     }
+                    PlaybackLogManager.log(PlaybackLogLevel.WARNING, "Stream validation failed: ${currentClient.clientName}", "Response OK but stream URL rejected")
                 }
             } else {
                 val status = streamPlayerResponse?.playabilityStatus?.status ?: "Unknown"
@@ -808,13 +813,13 @@ object YTPlayerUtils {
      * If this returns true the url is likely to work.
      * If this returns false the url might cause an error during playback.
      */
-    private fun validateStatus(url: String): Boolean {
+    private fun validateStatus(url: String, userAgent: String = YouTubeClient.USER_AGENT_WEB): Boolean {
         Timber.tag(logTag).d("Validating stream URL status")
         try {
             val requestBuilder = okhttp3.Request.Builder()
                 .head()
                 .url(url)
-                .header("User-Agent", YouTubeClient.USER_AGENT_WEB)
+                .header("User-Agent", userAgent)
 
             // Do NOT add Cookie header — googlevideo.com CDN rejects account cookies with 403.
             // Stream URLs are already authenticated via signed URL parameters.
