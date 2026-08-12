@@ -148,6 +148,12 @@ object YTPlayerUtils {
      * Stream URLs come from [MAIN_CLIENT] or [STREAM_FALLBACK_CLIENTS] for fast loading.
      * Metadata (audioConfig, playbackTracking) come from [METADATA_CLIENT] (WEB_REMIX)
      * when the user is logged in, to ensure remote history recording works correctly.
+     *
+     * @param forceLoginCapableClient When true, skip MAIN_CLIENT and start directly at a
+     * login-capable fallback client (WEB_CREATOR). Used when a track has already failed
+     * with an expired-URL (403) error on MAIN_CLIENT — for a logged-in user this usually
+     * means the content needs an authenticated client rather than a fresh signed URL from
+     * the same client, so retrying MAIN_CLIENT again would just fail identically.
      */
     suspend fun playerResponseForPlayback(
         videoId: String,
@@ -155,13 +161,6 @@ object YTPlayerUtils {
         audioQuality: AudioQuality,
         connectivityManager: ConnectivityManager,
         context: android.content.Context? = null,
-        /**
-         * When true, skip MAIN_CLIENT and start directly at a login-capable fallback
-         * client (WEB_CREATOR). Used when a track has already failed with an expired-URL
-         * (403) error on MAIN_CLIENT — for a logged-in user this usually means the
-         * content needs an authenticated client rather than a fresh signed URL from the
-         * same client, so retrying MAIN_CLIENT again would just fail identically.
-         */
         forceLoginCapableClient: Boolean = false,
     ): Result<PlaybackData> {
         // ── JioSaavn intercept ───────────────────────────────────────────────
