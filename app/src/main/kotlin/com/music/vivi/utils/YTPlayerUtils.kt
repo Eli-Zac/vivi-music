@@ -363,13 +363,13 @@ object YTPlayerUtils {
         }
         // ── End JioSaavn intercept ───────────────────────────────────────────
 
-        val firstAttempt = resolvePlaybackData(videoId, playlistId, audioQuality, connectivityManager)
-        
+        val firstAttempt = resolvePlaybackData(videoId, playlistId, audioQuality, connectivityManager, forceLoginCapableClient)
+
         if (firstAttempt.isFailure && YouTube.cookie == null) {
             Timber.tag(TAG).w("Playback failed for guest. Rotating session and retrying...")
             PlaybackLogManager.log(PlaybackLogLevel.BOT, "Playback failed for guest", "Triggering bot detection mitigation (rotating guest session)")
             BotDetectionMitigator.rotateGuestSession()
-            val retryResult = resolvePlaybackData(videoId, playlistId, audioQuality, connectivityManager)
+            val retryResult = resolvePlaybackData(videoId, playlistId, audioQuality, connectivityManager, forceLoginCapableClient)
             retryResult.onSuccess { BotDetectionMitigator.notifyPlaybackSuccess() }
             return retryResult
         }
@@ -383,6 +383,7 @@ object YTPlayerUtils {
         playlistId: String? = null,
         audioQuality: AudioQuality,
         connectivityManager: ConnectivityManager,
+        forceLoginCapableClient: Boolean = false,
     ): Result<PlaybackData> = runCatching {
         Timber.tag(logTag).d("Fetching player response for videoId: $videoId, playlistId: $playlistId")
         PlaybackLogManager.log(PlaybackLogLevel.INFO, "Resolving playback data", "Video: $videoId")
